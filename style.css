@@ -120,3 +120,8 @@ body{background:#f5f7fb}
 /* Keep the FTR overlay above the collection grid’s sticky row-number header. */
 #previewModal{z-index:30}
 .notice{z-index:40}
+
+.collection-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+#dashboard .methodology-resources{display:flex;align-items:center;justify-content:space-between;gap:18px;border-radius:17px;border-color:#e0e8f0;padding:22px 25px}
+#dashboard .methodology-resources h2{margin-top:6px;color:#193652}
+@media(max-width:900px){#dashboard .methodology-resources{align-items:flex-start;flex-direction:column}}
