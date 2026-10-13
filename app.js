@@ -29,7 +29,7 @@ function captureContext(){if(rec())rec().context={...rec().context,market_tier:$
 
 function renderDash(){const all=docs.filter(assigned);const status=d=>records[d.doc_id]?.status||d.collection_status||'in progress';$('countAll').textContent=all.length;$('countProgress').textContent=all.filter(d=>status(d)==='in progress').length;$('countCompleted').textContent=all.filter(d=>status(d)==='completed').length;$('countAudited').textContent=all.filter(d=>status(d)==='audited').length;$('countQuery').textContent=all.filter(d=>status(d)==='query raised').length;$('welcome').textContent=profile()?profile().analyst_name+'’s documents':'Your document queue';const query=$('search').value.toLowerCase(),filter=$('filter').value;let list=all.filter(d=>(d.doc_id+' '+d.company_id+' '+d.industry_name).toLowerCase().includes(query)&&(filter==='all'||filter===status(d)));$('docRows').innerHTML=list.length?list.map(d=>`<tr><td><strong>${E(d.doc_id)}</strong></td><td>${E(d.company_id)}</td><td>${E(d.industry_name)}</td><td>${E(d['Ground Truth Status']||'—')}</td><td>${records[d.doc_id]?.rows.length??d.row_count??0}</td><td><span class="pill ${status(d)==='in progress'?'progress':status(d).replace(' ','-')}">${E(status(d))}</span></td><td><button class="link" data-open="${E(d.doc_id)}">Open →</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">No assigned documents match this view.</td></tr>'}
 function renderState(){
- const s=rec();$('currentStatus').textContent=s?.status||'No document';$('currentStatus').className='pill '+(s?.status==='in progress'?'progress':(s?.status||'').replace(' ','-'));
+ const s=rec();$('openAnnotation').disabled=!doc()?.doc_id;$('currentStatus').textContent=s?.status||'No document';$('currentStatus').className='pill '+(s?.status==='in progress'?'progress':(s?.status||'').replace(' ','-'));
  $('outputHint').textContent=s?`${s.rows.length} collection row${s.rows.length===1?'':'s'} · ${M.headers.length} columns`:'Look up a document to begin.';
  $('trail').textContent=s?.updated?'Last saved '+new Date(s.updated).toLocaleString()+(s.completed?' · Completed '+new Date(s.completed).toLocaleString():'')+(s.audited?' · Audited '+new Date(s.audited).toLocaleString():''):'No saved changes yet.';
  $('audit').disabled=s?.status!=='completed';$('addRow').disabled=!s;['review','saveDraft','complete'].forEach(id=>$(id).disabled=!s);$('qcErrors').textContent='';
@@ -38,6 +38,9 @@ function renderState(){
 const rowHeaders=['fiscal_year_end_date','period_end_date','period_length','ms_id','datapoint_name','Master (true/false)','Raw segment name','Normalized segment name','Raw parent name','Normalized parent name','segment_type','datapoint_value','datapoint_unit','datapoint_magnitude','datapoint_value_type','datapoint_frequency','datapoint_currency'];
 function cellInput(key,value,i,type='text',hint=''){return `<input class="grid-input" data-key="${key}" value="${E(value)}" type="${type}" aria-label="${E(key.replaceAll('_',' '))} row ${i+1}" ${hint?`placeholder="${E(hint)}"`:''}>`}
 function cellSelect(key,value,allowed,i,disabled=false){return `<select class="grid-input" data-key="${key}" aria-label="${E(key.replaceAll('_',' '))} row ${i+1}" ${disabled?'disabled':''}><option value="">—</option>${allowed.map(v=>`<option value="${E(v)}" ${v===value?'selected':''}>${E(v)}</option>`).join('')}</select>`}
+function parentOptionHtml(key,value,i){const segmentKey=key==='raw_parent'?'raw_segment':'normalized_segment',allowed=M.parentChoices(rec().rows,i,segmentKey);return '<option value="">Choose parent segment</option>'+(value&&!allowed.includes(value)?`<option value="${E(value)}" selected disabled>Unavailable: ${E(value)}</option>`:'')+allowed.map(v=>`<option value="${E(v)}" ${v===value?'selected':''}>${E(v)}</option>`).join('')}
+function parentSelect(key,value,i){return `<select class="grid-input" data-key="${key}" aria-label="${E(key.replaceAll('_',' '))} row ${i+1}">${parentOptionHtml(key,value,i)}</select>`}
+function refreshParentMenus(start){for(let i=start;i<rec().rows.length;i++){const tr=$('entries').querySelector(`[data-row="${i}"]`);if(!tr)continue;for(const key of ['raw_parent','normalized_parent']){const select=tr.querySelector(`[data-key="${key}"]`);select.innerHTML=parentOptionHtml(key,rec().rows[i][key],i)}dateQc(i)}}
 function rowErrors(row){return M.validate(doc(),rec()?.context||{},[row],D,currencies)}
 function rowMatches(row,query){return [row.ms_id,row.datapoint_name,row.raw_segment,row.normalized_segment,row.raw_parent,row.normalized_parent,row.datapoint_value].join(' ').toLowerCase().includes(query)}
 function renderEntries(){
@@ -56,9 +59,9 @@ function renderEntries(){
    `<td><input class="grid-input readonly" value="${E(v.ms_id)}" aria-label="ms_id row ${i+1}" readonly></td><td class="point-cell">${pointNamed}</td>`+
    `<td>${cellSelect('master',v.master,['true','false'],i)}</td>`+
    `<td>${cellInput('raw_segment',v.raw_segment,i)}</td><td>${cellInput('normalized_segment',v.normalized_segment,i)}</td>`+
-   `<td>${cellInput('raw_parent',v.raw_parent,i)}</td><td>${cellInput('normalized_parent',v.normalized_parent,i)}</td>`+
+   `<td>${parentSelect('raw_parent',v.raw_parent,i)}</td><td>${parentSelect('normalized_parent',v.normalized_parent,i)}</td>`+
    `<td>${cellSelect('segment_type',v.segment_type,M.segmentTypes,i)}</td><td>${cellInput('datapoint_value',v.datapoint_value,i)}</td>`+
-   `<td>${cellSelect('datapoint_unit',v.datapoint_unit,M.choices(def?.unit),i,!M.choices(def?.unit).length)}</td>`+
+   `<td>${M.choices(def?.unit).length?cellSelect('datapoint_unit',v.datapoint_unit,M.choices(def.unit),i):cellInput('datapoint_unit',v.datapoint_unit,i,'text','Enter unit (required)')}</td>`+
    `<td>${cellSelect('datapoint_magnitude',v.datapoint_magnitude,M.choices(def?.magnitude),i,!M.choices(def?.magnitude).length)}</td>`+
    `<td>${cellSelect('datapoint_value_type',v.datapoint_value_type,M.choices(def?.value_types),i,!M.choices(def?.value_types).length)}</td>`+
    `<td>${cellSelect('datapoint_frequency',v.datapoint_frequency,M.choices(def?.frequency_values),i,!M.choices(def?.frequency_values).length)}</td>`+
@@ -130,7 +133,9 @@ $('entries').addEventListener('input',event=>{
  dateQc(i);save(true);
 });
 $('entries').addEventListener('change',event=>{
- const el=event.target,key=el.dataset.key;if(!key||el.tagName!=='SELECT')return;
+ const el=event.target,key=el.dataset.key;if(!key)return;
+ if(el.tagName==='INPUT'&&(key==='raw_segment'||key==='normalized_segment')){refreshParentMenus(Number(el.closest('[data-row]').dataset.row)+1);return}
+ if(el.tagName!=='SELECT')return;
  const i=Number(el.closest('[data-row]').dataset.row),r=rec().rows[i];
  if(key==='definition'){const def=M.findDef(D,doc().industry_name,el.value),replacement=M.entry(def,r);for(const k of ['master','raw_segment','normalized_segment','raw_parent','normalized_parent','segment_type','datapoint_value','overrides'])replacement[k]=r[k];rec().rows[i]=replacement;renderEntries();$('entries').querySelector(`[data-row="${i}"] [data-key="definition"]`)?.focus({preventScroll:true})}
  else{r[key]=el.value;dateQc(i)}
@@ -156,3 +161,5 @@ $('adminFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return
 $('importPreview').onchange=e=>{const i=e.target.dataset.importAssignee;if(i!==undefined)importRows[Number(i)].assigned_analyst=e.target.value};$('applyBulk').onclick=()=>{importRows.forEach(r=>r.assigned_analyst=$('bulkAssignee').value);renderImport()};$('importDocuments').onclick=importDocuments;$('refreshDocuments').onclick=loadAdminDocuments;$('adminDocSearch').oninput=renderAdminDocuments;$('adminDocuments').onchange=async e=>{const id=e.target.dataset.assignDoc;if(!id)return;const name=e.target.value;try{if(!name){toast('Choose an analyst to assign.');await loadAdminDocuments();return}await api('admin/assign',{method:'POST',body:JSON.stringify({doc_id:id,analyst_name:name})});toast('Document assigned to '+name);await loadAdminDocuments()}catch(error){toast(error.message);await loadAdminDocuments()}};$('fetchTime').onclick=fetchTime;
 $('schema').innerHTML=M.headers.map(h=>'<li>'+E(h)+'</li>').join('');$('dictSummary').textContent=D.length+' mappings across '+new Set(D.map(d=>d.industry)).size+' industries.';bootstrap();
 window.addEventListener('beforeunload',event=>{if(pending||saveBusy){event.preventDefault();event.returnValue=''}});
+
+$('openAnnotation').onclick=()=>{const id=doc()?.doc_id;if(!id)return;const url=new URL('https://annotation-tool-ui-prod.dcc8fc7.eas.morningstar.com/annotation-tool?team=ISM&user=Lisha.Porwal&document=578144731&sessionId=UquT6EHfYpeWYw9pALa_&useSocket=true&file=_74385100.pdf.html');url.searchParams.set('document',String(id));window.open(url.href,'_blank','noopener,noreferrer')};
