@@ -159,6 +159,13 @@ body{background:#f5f7fb}
       <button class="btn" type="submit">Add to practice</button>
     </form>
   </div>
+  <div class="cards" aria-label="Practice counts">
+  <div class="panel"><span>Practice files</span><strong id="practiceCountAll">—</strong></div>
+  <div class="panel"><span>In progress</span><strong id="practiceCountProgress">—</strong></div>
+  <div class="panel"><span>Completed</span><strong id="practiceCountCompleted">—</strong></div>
+  <div class="panel"><span>Audited</span><strong id="practiceCountAudited">—</strong></div>
+  <div class="panel"><span>Query raised</span><strong id="practiceCountQuery">—</strong></div>
+  </div>
   <p id="practiceStatus" class="micro" role="status"></p>
   <div class="table-wrap"><table>
     <thead><tr><th scope="col">Document ID</th><th scope="col">Industry</th><th scope="col">Rows</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
@@ -648,6 +655,15 @@ function recordRequest(id,options={},mode=recordMode){
  return window.ISM_SUPABASE.practice(options.method==='PUT'?'save':'load',{doc_id:id,...(options.body?JSON.parse(options.body):{})});
 }
 let practiceRequest=0;
+function renderPracticeCounts(documents){
+ const counts={All:documents?.length,Progress:0,Completed:0,Audited:0,Query:0};
+ const statuses={'in progress':'Progress',completed:'Completed',audited:'Audited','query raised':'Query'};
+ for(const document of documents||[]){
+  const key=statuses[document.status];
+  if(key)counts[key]++;
+ }
+ for(const [key,count] of Object.entries(counts))$('practiceCount'+key).textContent=documents?count:'—';
+}
 async function renderPractice(){
  const request=++practiceRequest;
  const status=$('practiceStatus'),queue=$('practiceQueue');
@@ -656,10 +672,12 @@ async function renderPractice(){
   const {documents}=await window.ISM_SUPABASE.practice('list');
   if(request!==practiceRequest)return;
   status.textContent='';
+  renderPracticeCounts(documents);
   queue.innerHTML=documents.length?documents.map(d=>`<tr><td><strong>${E(d.doc_id)}</strong></td><td>${E(d.industry_name)}</td><td>${E(d.row_count)}</td><td><span class="pill ${d.status==='in progress'?'progress':E(d.status.replace(' ','-'))}">${E(d.status)}</span></td><td><button class="link" type="button" data-practice-open="${E(d.doc_id)}" aria-label="Open practice document ${E(d.doc_id)}">Open →</button></td></tr>`).join(''):'<tr><td colspan="5" class="empty">No practice documents yet. Enter a document ID to add one.</td></tr>';
  }catch(error){
   if(request!==practiceRequest)return;
   status.textContent=error.message;
+  renderPracticeCounts(null);
   queue.innerHTML='<tr><td colspan="5" class="empty">Practice queue could not load.</td></tr>';
  }
 }
@@ -703,6 +721,7 @@ async function performSave(){
  try{const result=await recordRequest(id,{method:'PUT',body:JSON.stringify(snapshot)});if(!Number.isInteger(result.revision))throw Error('Save was not acknowledged. Retry saving.');r.revision=result.revision;r.updated=result.updated;
   $('saveStatus').textContent=pending?'Saving newer changes…':'Saved to shared database';const d=recordMode==='production'?docs.find(x=>x.doc_id===id):null;if(d){d.collection_status=snapshot.status;d.row_count=snapshot.rows.length}
   if(pending)cacheDraft();else try{localStorage.removeItem(key)}catch{}renderDash();
+  if(recordMode==='practice'&&!$('dashboard').classList.contains('hide'))renderPractice();
  }catch(error){lastSaveError=error.message;saveBlocked=error.status===409;pending=true;cacheDraft();$('saveStatus').textContent=saveBlocked?'Conflict: download draft, then reload server copy':'Not saved: '+error.message;toast(error.message);return;
  }finally{saveBusy=false;renderState()}
  if(pending&&!saveBlocked)saveTimer=setTimeout(flushSave,1500);
@@ -828,7 +847,7 @@ function showReview(){
  $('reviewTable').innerHTML='<table><thead><tr>'+keys.map(x=>'<th>'+E(x)+'</th>').join('')+'</tr></thead><tbody>'+rows.map((r,i)=>`<tr class="${tint(i)}">`+keys.map(key=>cell(r[key],key,i)).join('')+'</tr>').join('')+'</tbody></table>';
  const exportKeys=['company_id','doc_id','industry_name','industry_code','form_type','Production Status','report_type','market','market_tier','fiscal_year_end_date','period_end_date','period_length','period_type','period_number','ms_id','datapoint_name','master','raw_segment','normalized_segment','raw_parent','normalized_parent','segment_type','datapoint_value','datapoint_unit','datapoint_magnitude','datapoint_value_type','datapoint_frequency','datapoint_currency','as_reported_value','analyst','date_reviewed'];
  $('previewTable').innerHTML='<table><thead><tr>'+M.headers.map((h,i)=>'<th>'+E((i+1)+'. '+h)+'</th>').join('')+'</tr></thead><tbody>'+values.map((row,i)=>`<tr class="${tint(i)}">`+row.map((v,j)=>cell(v,exportKeys[j],i)).join('')+'</tr>').join('')+'</tbody></table>';
- $('reviewErrors').innerHTML=issues.length?'<b>You can still copy. Completion and audit require valid document metadata and collection rows.</b><ul>'+issues.map(x=>'<li>'+E(x)+'</li>').join('')+'</ul>':'No QC findings in the current rows. Review the segment relationships against the source document.';
+ $('reviewErrors').innerHTML=issues.length?'<b>'+(recordMode==='practice'?'Practice QC findings are advisory. You can still mark this collection complete.':'You can still copy. Completion and audit require valid document metadata and collection rows.')+'</b><ul>'+issues.map(x=>'<li>'+E(x)+'</li>').join('')+'</ul>':'No QC findings in the current rows. Review the segment relationships against the source document.';
  $('ftrWarnings').innerHTML=warnings.length?'<b>FTR advisory checks</b><ul>'+warnings.map(f=>'<li>'+E(f.code+' · '+f.message)+'</li>').join('')+'</ul>':'No advisory findings in the current rows.';
  updateFtrGtLink();$('copy').disabled=!rows.length;$('manualCopy').value=M.tsv(values);$('previewModal').classList.remove('hide');
 }
