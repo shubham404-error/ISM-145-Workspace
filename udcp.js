@@ -1,7 +1,7 @@
 'use strict';
 
 window.ISM_UDCP = {
-  create({ root, request, dictionary, currencies, escape, navigate, annotationUrl, flushGT }) {
+  create({ root, request, dictionary, currencies, escape, navigate, annotationUrl, methodologyUrl, flushGT }) {
     const esc = value => escape(value ?? '');
     const fields = [
       ['end','Period End Date','date'], ['fiscal','Fiscal Year End','date'],
@@ -39,10 +39,11 @@ window.ISM_UDCP = {
       const metadata=[['Entity info',[['Entity ID',doc.company_id],['Industry',doc.industry_name],['Industry code',doc.industry_code],['Market',doc.market],['Tier',doc.market_tier]]],['Source',[['Document ID',doc.doc_id],['Form type',doc.form_type]]]];
       const pointOptions=dictionary.filter(point=>point.industry===doc.industry_name);
       const annotation=annotationUrl(doc);
+      const methodology=methodologyUrl(doc.industry_name);
       const picked=data.metrics.find(row=>row.id===selected);
       root.innerHTML=`
         <header class="udcp-heading"><div><div class="udcp-context">${active.scope==='practice'?'Practice':'Assigned'} · ${esc(doc.doc_id)}</div><h1>${esc(doc.company_name || 'UDCP collection')}</h1></div>
-          <div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<button class="btn" data-action="save"${busy?' disabled':''}>Save collection</button></div></header>
+          <div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(methodology)}">Open methodology ↗</a><button class="btn" data-action="save"${busy?' disabled':''}>Save collection</button></div></header>
         <p class="udcp-state" role="status">${dirty?'Unsaved changes':revision?'Saved to workspace':'Ready to collect'}</p>
         <details class="udcp-panel udcp-meta"><summary>Document metadata</summary><div class="udcp-meta-grid">${metadata.map(([title, entries])=>{
           const populated=entries.filter(([,value])=>value && value!=='-');
