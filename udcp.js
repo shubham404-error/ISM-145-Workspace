@@ -1,7 +1,7 @@
 'use strict';
 
 window.ISM_UDCP = {
-  create({ root, chooser, request, dictionary, currencies, escape, navigate, openGT, annotationUrl, flushGT }) {
+  create({ root, request, dictionary, currencies, escape, navigate, annotationUrl, flushGT }) {
     const esc = value => escape(value ?? '');
     const fields = [
       ['end','Period End Date','date'], ['fiscal','Fiscal Year End','date'],
@@ -150,34 +150,21 @@ window.ISM_UDCP = {
       }
     });
 
-    async function launch(result, scope) {
-      if(result.view==='gt'){await openGT(result.document.doc_id,scope);return;}
-      active={scope,document:result.document};data=result.content;revision=result.revision;
-      selected=null;dirty=false;compact=false;render();navigate('udcp');
-    }
     return {
       canLeave:()=>!busy&&(!dirty||window.confirm('Leave without saving your UDCP changes?')),
       clearDirty:()=>{dirty=false;},
       hasUnsaved:()=>dirty||busy,
       async open(doc_id, scope) {
-        if(busy||chooser.open)return;
-        let result;
-        const payload={doc_id,scope};
+        if(busy)return;
         busy=true;
-        try{if(!await flushGT())return;result=await request('open',payload);}
-        finally{busy=false;}
-        if(result.view){await launch(result,scope);return;}
-        chooser.innerHTML=`<h2>Choose a collection view</h2><p>Choose once for this document. The view is locked after confirmation.</p><div class="udcp-choice-list"><button type="button" class="udcp-choice" data-view="udcp"><strong>UDCP (new)</strong><span>Reporting periods and nested segment rows</span></button><button type="button" class="udcp-choice" data-view="gt"><strong>GT View (old)</strong><span>Existing collection grid</span></button></div><p role="status"></p><button type="button" class="btn ghost" data-close>Cancel</button>`;
-        chooser.querySelector('[data-close]').onclick=()=>chooser.close();
-        chooser.querySelectorAll('[data-view]').forEach(button=>button.onclick=async()=>{
-          if(busy)return;
-          busy=true;
-          chooser.querySelectorAll('button').forEach(item=>item.disabled=true);
-          try{const chosen=await request('choose',{...payload,view:button.dataset.view});chooser.close();await launch(chosen,scope);}
-          catch(error){chooser.querySelector('[role="status"]').textContent=error.message;}
-          finally{busy=false;chooser.querySelectorAll('button').forEach(item=>item.disabled=false);}
-        });
-        chooser.showModal();
+        try{
+          if(!await flushGT())return;
+          const result=await request('choose',{doc_id,scope,view:'udcp'});
+          if(result.view!=='udcp')throw Error('Could not open UDCP for this document.');
+          active={scope,document:result.document};data=result.content;revision=result.revision;
+          selected=null;dirty=false;compact=false;
+        }finally{busy=false;}
+        render();navigate('udcp');
       }
     };
   }
