@@ -41,3 +41,17 @@
 .udcp-choice { display:grid; gap:.3rem; text-align:left; padding:.8rem; border:1px solid #bfced8; border-radius:8px; background:#f2f7fa; color:inherit; cursor:pointer; }
 .udcp-choice:hover,.udcp-choice:focus-visible { background:#e7f6f5; border-color:#087f8c; }
 @media(max-width:650px) { .udcp-metrics tr > :nth-child(2) { min-width:8rem; } }
+
+#udcp .udcp-heading { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); margin-bottom:.85rem; gap:.65rem; }
+#udcp .udcp-heading > .udcp-actions { justify-content:flex-end; }
+.udcp-save-badge { display:inline-flex; align-items:center; justify-content:center; gap:.4rem; min-width:6.4rem; padding:.27rem .55rem; border-radius:99px; background:#eef3f7; color:#41596e; font-size:.75rem; font-weight:700; }
+.udcp-save-badge::before { content:''; width:.45rem; height:.45rem; border-radius:50%; background:currentColor; }
+.udcp-save-badge[data-state="saved"] { background:#e5f5ec; color:#17613c; }
+.udcp-save-badge[data-state="pending"] { background:#fff2d8; color:#815200; }
+.udcp-save-badge[data-state="saving"] { background:#e7f1fc; color:#22598d; }
+.udcp-save-badge[data-state="error"] { background:#fdebec; color:#9a292d; }
+.udcp-period-hint { margin:0 1rem .75rem; color:#694b14; font-size:.8rem; }
+@media(max-width:900px) {
+  #udcp .udcp-heading { grid-template-columns:minmax(0,1fr) auto; }
+  #udcp .udcp-heading > .udcp-actions { grid-column:1/-1; justify-content:flex-start; }
+}
