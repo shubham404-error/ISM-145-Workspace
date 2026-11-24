@@ -26,6 +26,10 @@ window.ISM_UDCP = {
         : `<input ${props} type="${type}" value="${esc(value)}"${type==='number'?' min="0" step="1"':''}>`;
     }
     const definition = row => dictionary.find(point => point.industry===active.document.industry_name && point.data_point_id===row.point);
+    const rowLabel = row => row.depth
+      ? row.aor ?? row.name ?? ''
+      : row.aor || definition(row)?.data_point_name || row.point;
+    const segmentParents = row => data.metrics.filter(parent => parent.point===row?.point && parent.depth<3);
     const periodLabel = p => [p.report,p.type,p.number!==''&&p.number!=null?`P${p.number}`:'',p.end].filter(Boolean).join(' · ');
     const status = message => { root.querySelector('[role="status"]').textContent=message; };
 
@@ -47,10 +51,10 @@ window.ISM_UDCP = {
         <section class="udcp-panel"><div class="udcp-bar"><h2>Reporting periods <small>${data.periods.length}</small></h2><button class="btn ghost" data-action="period">+ Add header</button></div>
         ${data.periods.length?`<div class="udcp-scroll"><table class="udcp-periods"><thead><tr><th scope="col">Header fields</th>${data.periods.map((p,i)=>`<th scope="col" data-period="${esc(p.id)}"><div class="udcp-period-heading"><span>${esc(periodLabel(p)||'Period '+(i+1))}</span><button type="button" class="link" data-action="duplicate" aria-label="Duplicate header ${i+1}">Duplicate</button></div></th>`).join('')}</tr></thead><tbody>${fields.map(([key,label,type])=>`<tr><th scope="row">${label}</th>${data.periods.map((p,i)=>`<td data-period="${esc(p.id)}">${editor(key,label+' for period '+(i+1),type,p[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<p class="udcp-empty">Add a reporting period to create the first value column.</p>'}</section>
         <section class="udcp-panel"><div class="udcp-bar"><h2>Industry metrics <small>${data.metrics.length}</small></h2><div class="udcp-actions">
-        <button class="btn ghost" data-action="compact">${compact?'Show attributes':'Hide attributes'}</button><button class="btn ghost" data-action="segment"${!picked||picked.depth>=3?' disabled':''}>+ Add segment</button><button class="btn" data-action="metric"${pointOptions.length?'':' disabled'}>+ Add metric</button></div></div>
+        <button class="btn ghost" data-action="compact">${compact?'Show attributes':'Hide attributes'}</button><button class="btn ghost" data-action="segment"${!segmentParents(picked).length?' disabled':''}>+ Add segment</button><button class="btn" data-action="metric"${pointOptions.length?'':' disabled'}>+ Add metric</button></div></div>
         ${data.metrics.length?`<div class="udcp-scroll"><table class="udcp-metrics"><thead><tr><th class="udcp-pin" scope="col">Master</th><th class="udcp-pin" scope="col">Data Point / MSID</th>${compact?'':attributes.map(([,label])=>`<th scope="col">${label}</th>`).join('')}${data.periods.map((p,i)=>`<th scope="col" data-value-period="${esc(p.id)}">${esc(periodLabel(p)||'Period '+(i+1))}</th>`).join('')}</tr></thead><tbody>${data.metrics.map(row=>{
           const point=definition(row);
-          return `<tr data-row="${esc(row.id)}" class="${row.id===selected?'udcp-selected':''}"><td><input type="checkbox" aria-label="Master row" disabled${row.depth===0?' checked':''}></td><th scope="row"><button type="button" class="udcp-row-select" style="--depth:${Number(row.depth)||0}" data-action="select"><strong>${esc(row.depth?row.name:point?.data_point_name||row.point)}</strong><small>${esc(row.depth?row.segmentType+' · '+row.point:row.point)}</small></button></th>${compact?'':attributes.map(([key,label])=>`<td>${editor(key,label+' for '+(row.name||row.point),key==='aor'?'text':choices(point?.[attributeKeys[key]]),row[key])}</td>`).join('')}${data.periods.map((p,i)=>`<td>${editor('value:'+p.id,'Value for period '+(i+1),'text',row.values[p.id])}</td>`).join('')}</tr>`;
+          return `<tr data-row="${esc(row.id)}" class="${row.id===selected?'udcp-selected':''}"><td><input type="checkbox" aria-label="Master row" disabled${row.depth===0?' checked':''}></td><th scope="row"><button type="button" class="udcp-row-select" style="--depth:${Number(row.depth)||0}" data-action="select"><strong>${esc(row.depth?rowLabel(row):point?.data_point_name||row.point)}</strong><small>${esc(row.depth?row.segmentType+' · '+row.point:row.point)}</small></button></th>${compact?'':attributes.map(([key,label])=>`<td>${editor(key,label+' for '+(rowLabel(row)||row.point),key==='aor'?'text':choices(point?.[attributeKeys[key]]),(key==='aor' && row.depth ? rowLabel(row) : row[key]))}</td>`).join('')}${data.periods.map((p,i)=>`<td>${editor('value:'+p.id,'Value for period '+(i+1),'text',row.values[p.id])}</td>`).join('')}</tr>`;
         }).join('')}</tbody></table></div>`:`<p class="udcp-empty">${pointOptions.length?'Add a metric from the industry dictionary.':'No dictionary entries are available for this industry.'}</p>`}
         </section><dialog class="udcp-dialog" data-editor></dialog>`;
       root.querySelectorAll('.udcp-scroll').forEach((el,i)=>{if(scrollers[i])[el.scrollLeft,el.scrollTop]=scrollers[i];});
@@ -58,19 +62,26 @@ window.ISM_UDCP = {
 
     function showAdd(segment) {
       const dialog=root.querySelector('[data-editor]');
-      const parent=data.metrics.find(row=>row.id===selected);
+      const picked=data.metrics.find(row=>row.id===selected);
+      const parents=segmentParents(picked);
+      const defaultParent=parents.includes(picked)?picked:parents[0];
       const options=segment
-        ? choices(definition(parent)?.segment_type||'Business|Business Unit|Geography|Product or Services|Department|Hospital|Healthcare Facility Type|Brands or Franchise|Customer Type|Contract Type|Sales or Distribution Channel|Property Type|Model|Other')
+        ? choices(definition(picked)?.segment_type||'Business|Business Unit|Geography|Product or Services|Department|Hospital|Healthcare Facility Type|Brands or Franchise|Customer Type|Contract Type|Sales or Distribution Channel|Property Type|Model|Other')
         : dictionary.filter(point=>point.industry===active.document.industry_name).sort((a,b)=>a.data_point_name.localeCompare(b.data_point_name));
       dialog.innerHTML=`<form><h2>${segment?'Add segment':'Add metric'}</h2>${segment
-        ? `<label>Segment type<select name="type" required>${optionList(options,'')}</select></label><label>Segment name<input name="name" required></label>`
+        ? `<label>Segment type<select name="type" required>${optionList(options,'')}</select></label><label>Parent name<select name="parent" required>${parents.map(parent=>`<option value="${esc(parent.id)}"${parent===defaultParent?' selected':''}>${esc(rowLabel(parent)||parent.point)} · ${parent.depth?'Level '+parent.depth:'Master'} · Row ${data.metrics.indexOf(parent)+1}</option>`).join('')}</select></label><label>AOR<input name="aor" required></label><label style="display:flex;align-items:center;gap:.5rem"><input type="checkbox" name="copy" style="width:auto"> Copy parent attributes</label>`
         : `<label>Data point<select name="point" required><option value=""></option>${options.map(point=>`<option value="${esc(point.data_point_id)}">${esc(point.data_point_name)} · ${esc(point.data_point_id)}</option>`).join('')}</select></label>`}
         <div class="udcp-actions"><button type="button" class="btn ghost" data-action="cancel">Cancel</button><button class="btn">Add</button></div></form>`;
       dialog.querySelector('form').onsubmit=event=>{
         event.preventDefault();
         const fields=new FormData(event.currentTarget);
-        const row={id:crypto.randomUUID(),parent:segment?parent.id:null,depth:segment?parent.depth+1:0,point:segment?parent.point:fields.get('point'),name:segment?fields.get('name').trim():'',segmentType:segment?fields.get('type'):'',values:{}};
-        if(segment&&!row.name){event.currentTarget.elements.name.focus();return;}
+        const parent=segment?parents.find(item=>item.id===fields.get('parent')):null;
+        const aor=segment?fields.get('aor'):'';
+        if(segment&&(!parent||!aor.trim())){event.currentTarget.elements.aor.focus();return;}
+        const row={id:crypto.randomUUID(),parent:parent?.id??null,depth:parent?parent.depth+1:0,point:parent?parent.point:fields.get('point'),aor,segmentType:segment?fields.get('type'):'',values:{}};
+        if(parent&&fields.has('copy')){
+          for(const key of Object.keys(attributeKeys))row[key]=parent[key]??'';
+        }
         let at=segment?data.metrics.indexOf(parent)+1:data.metrics.length;
         while(segment&&at<data.metrics.length&&data.metrics[at].depth>parent.depth)at++;
         data.metrics.splice(at,0,row);
@@ -88,6 +99,7 @@ window.ISM_UDCP = {
       const value=event.target.value;
       if(field.startsWith('value:'))record.values[field.slice(6)]=value;
       else record[field]=value;
+      if(field==='aor'&&record.depth)event.target.closest('[data-row]').querySelector('.udcp-row-select strong').textContent=value;
       dirty=true;status('Unsaved changes');
     });
     root.addEventListener('change',event=>{
@@ -106,7 +118,7 @@ window.ISM_UDCP = {
       if(action==='cancel'){root.querySelector('[data-editor]').close();return;}
       if(action==='select'){selected=button.closest('[data-row]').dataset.row;
         root.querySelectorAll('[data-row]').forEach(row=>row.classList.toggle('udcp-selected',row.dataset.row===selected));
-        root.querySelector('[data-action="segment"]').disabled=data.metrics.find(row=>row.id===selected).depth>=3;
+        root.querySelector('[data-action="segment"]').disabled=!segmentParents(data.metrics.find(row=>row.id===selected)).length;
         return;
       }
       if(action==='metric'||action==='segment'){showAdd(action==='segment');return;}
