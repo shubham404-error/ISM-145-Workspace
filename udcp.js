@@ -31,8 +31,21 @@ window.ISM_UDCP = {
       : row.aor || definition(row)?.data_point_name || row.point;
     const segmentParents = row => data.metrics.filter(parent => parent.point===row?.point && parent.depth<3);
     const periodLabel = p => [p.report,p.type,p.number!==''&&p.number!=null?`P${p.number}`:'',p.end].filter(Boolean).join(' · ');
-    let saveTimer, saving=false, editVersion=0, savedLabel='';
-    const status = message => { savedLabel=message; root.querySelector('.udcp-state').textContent=message; };
+    let saveTimer, saving=false, editVersion=0, saveState='idle', saveDetail='';
+    const saveLabels={idle:'Ready',pending:'Unsaved',saving:'Saving…',saved:'Saved',error:'Save failed'};
+    const missingPeriodFields=()=>data.periods.some(p=>!p.type||!['0','1','2','3','4'].includes(p.number)||((p.type==='Annual')!==(p.number==='0')));
+    function status(state,detail=''){
+      saveState=state;saveDetail=detail;
+      const badge=root.querySelector('.udcp-save-badge');
+      if(badge.dataset.state!==state){
+        badge.dataset.state=state;
+        badge.textContent=saveLabels[state];
+      }
+      badge.title=detail;
+    }
+    function refreshPeriodHint(){
+      root.querySelector('.udcp-period-hint').hidden=!missingPeriodFields();
+    }
     const draftKey = () => 'ism145.udcp.draft:'+JSON.stringify([draftOwner(),active.scope,active.document.doc_id]);
     function cacheDraft(){
       try{localStorage.setItem(draftKey(),JSON.stringify({revision,content:data}));}catch{}
@@ -45,19 +58,20 @@ window.ISM_UDCP = {
       editVersion++;
       dirty=true;
       cacheDraft();
-      status(saving?'Saving… newer edits pending':'Unsaved changes · autosave pending');
+      status(saving?'saving':'pending');
+      refreshPeriodHint();
       scheduleSave();
     }
     async function saveLatest(){
       clearTimeout(saveTimer);
       if(!dirty||saving||busy)return;
-      if(data.periods.some(p=>!p.type||!['0','1','2','3','4'].includes(p.number)||((p.type==='Annual')!==(p.number==='0')))){
-        status('Unsaved · choose Period Type and Period Number on every header. Use 0 for Annual.');
+      if(missingPeriodFields()){
+        status('pending');
         return;
       }
       const version=editVersion;
       saving=true;
-      status('Saving…');
+      status('saving');
       try{
         const result=await request('save',{scope:active.scope,doc_id:active.document.doc_id,revision,content:structuredClone(data)});
         if(!Number.isInteger(result.revision)||result.revision!==revision+1)throw Error('Save was not confirmed');
@@ -65,13 +79,13 @@ window.ISM_UDCP = {
         dirty=version!==editVersion;
         if(dirty){
           cacheDraft();
-          status('Unsaved changes · autosave pending');
+          status('pending');
         }else{
           try{localStorage.removeItem(draftKey());}catch{}
-          status('Latest changes saved · '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}));
+          status('saved','Latest changes saved · '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}));
         }
       }catch(error){
-        status('Not saved · '+error.message);
+        status('error',error.message);
       }finally{
         saving=false;
         if(dirty&&version!==editVersion)scheduleSave();
@@ -88,13 +102,14 @@ window.ISM_UDCP = {
       const picked=data.metrics.find(row=>row.id===selected);
       root.innerHTML=`
         <header class="udcp-heading"><div><div class="udcp-context">${active.scope==='practice'?'Practice':'Assigned'} · ${esc(doc.doc_id)}</div><h1>${esc(doc.company_name || 'UDCP collection')}</h1></div>
-          <div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(methodology)}">Open methodology ↗</a><button class="btn" data-action="save"${busy?' disabled':''}>Save collection</button></div></header>
-        <p class="udcp-state" role="status">${esc(savedLabel || (revision?'Latest changes saved':'Ready to collect'))}</p>
+          <span class="udcp-save-badge" role="status" data-state="${saveState}" title="${esc(saveDetail)}">${saveLabels[saveState]}</span><div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(methodology)}">Open methodology ↗</a><button class="btn" data-action="save"${busy?' disabled':''}>Save collection</button></div></header>
+
         <details class="udcp-panel udcp-meta"><summary>Document metadata</summary><div class="udcp-meta-grid">${metadata.map(([title, entries])=>{
           const populated=entries.filter(([,value])=>value && value!=='-');
           return populated.length?`<section><h3>${title}</h3><dl>${populated.map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></section>`:'';
         }).join('')}</div></details>
         <section class="udcp-panel"><div class="udcp-bar"><h2>Reporting periods <small>${data.periods.length}</small></h2><button class="btn ghost" data-action="period">+ Add header</button></div>
+        <p class="udcp-period-hint"${missingPeriodFields()?'':' hidden'}>Choose Period Type and Period Number for each header. Use 0 for Annual.</p>
         ${data.periods.length?`<div class="udcp-scroll"><table class="udcp-periods"><thead><tr><th scope="col">Header fields</th>${data.periods.map((p,i)=>`<th scope="col" data-period="${esc(p.id)}"><div class="udcp-period-heading"><span>${esc(periodLabel(p)||'Period '+(i+1))}</span><button type="button" class="link" data-action="duplicate" aria-label="Duplicate header ${i+1}">Duplicate</button><button type="button" class="link" data-action="delete-period" aria-label="Delete header ${i+1}">Delete</button></div></th>`).join('')}</tr></thead><tbody>${fields.map(([key,label,type])=>`<tr><th scope="row">${label}</th>${data.periods.map((p,i)=>`<td data-period="${esc(p.id)}">${editor(key,label+' for period '+(i+1),type,p[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<p class="udcp-empty">Add a reporting period to create the first value column.</p>'}</section>
         <section class="udcp-panel"><div class="udcp-bar"><h2>Industry metrics <small>${data.metrics.length}</small></h2><div class="udcp-actions">
         <button class="btn ghost" data-action="compact">${compact?'Show attributes':'Hide attributes'}</button><button class="btn ghost" data-action="segment"${!segmentParents(picked).length?' disabled':''}>+ Add segment</button><button class="btn" data-action="metric"${pointOptions.length?'':' disabled'}>+ Add metric</button></div></div>
@@ -201,20 +216,20 @@ window.ISM_UDCP = {
           const result=await request('choose',{doc_id,scope,view:'udcp'});
           if(result.view!=='udcp')throw Error('Could not open UDCP for this document.');
           active={scope,document:result.document};data=result.content;revision=result.revision;
-          selected=null;dirty=false;compact=false;savedLabel='';
+          selected=null;dirty=false;compact=false;saveState=revision?'saved':'idle';saveDetail='';
           let draft;
           try{draft=JSON.parse(localStorage.getItem(draftKey())||'null');}catch{}
           if(draft?.revision===revision&&draft.content&&window.confirm('Restore unsaved changes from this browser?')){
-            data=draft.content;dirty=true;savedLabel='Recovery draft restored · autosave pending';
+            data=draft.content;dirty=true;saveState='pending';saveDetail='Recovery draft restored';
           }else if(draft?.content&&draft.revision!==revision){
-            savedLabel='Server version loaded · an older browser draft was not applied';
+            saveDetail='Server version loaded. An older browser draft was not applied.';
           }
           render();navigate('udcp');
           const link=annotationUrl(active.document);
           if(link&&annotationTab&&!annotationTab.closed){
             annotationTab.location.replace(link);
             annotationOpened=true;
-          }else if(link){root.querySelector('.udcp-state').title='Use Open annotation if your browser blocked the new tab.';}
+          }else if(link){root.querySelector('.udcp-heading').title='Use Open annotation if your browser blocked the new tab.';}
         }finally{
           if(annotationTab&&!annotationOpened)annotationTab.close();
           busy=false;
