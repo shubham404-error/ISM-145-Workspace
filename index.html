@@ -748,9 +748,8 @@ function renderDash(){const all=docs.filter(assigned);const status=d=>records[d.
 function renderState(){
  const s=rec(),practice=recordMode==='practice';
  $('collectionTitle').textContent=practice?'Practice collection':'Collect document data';
- $('openAnnotation').hidden=practice;
  $('collection').querySelector('.timer-bar').hidden=practice;
- $('openAnnotation').disabled=practice||!doc()?.doc_id;$('reviewMethodology').disabled=!doc();$('currentStatus').textContent=s?(s.status+((pending||saveBusy)?' · not yet saved':'')):'No document';$('currentStatus').className='pill '+(s?.status==='in progress'?'progress':(s?.status||'').replace(' ','-'));
+ $('openAnnotation').disabled=!doc()?.doc_id;$('reviewMethodology').disabled=!doc();$('currentStatus').textContent=s?(s.status+((pending||saveBusy)?' · not yet saved':'')):'No document';$('currentStatus').className='pill '+(s?.status==='in progress'?'progress':(s?.status||'').replace(' ','-'));
  $('outputHint').textContent=s?`${s.rows.length} collection row${s.rows.length===1?'':'s'} · ${M.headers.length} columns`:'Look up a document to begin.';
  $('trail').textContent=s?.updated?'Last saved '+new Date(s.updated).toLocaleString()+(s.completed?' · Completed '+new Date(s.completed).toLocaleString():'')+(s.audited?' · Audited '+new Date(s.audited).toLocaleString():''):'No saved changes yet.';
  $('importCollectionExcel').disabled=!s;$('downloadDraft').disabled=!s;$('restoreDraft').disabled=!s;$('reloadRecord').disabled=!s;
@@ -798,7 +797,6 @@ function renderEntries(){
 function dateQc(i){const r=rec()?.rows[i],tr=$('entries').querySelector(`[data-row="${i}"]`);if(!r||!tr)return;const issues=rowErrors(r),flag=tr.querySelector('.row-flag');tr.classList.toggle('needs-review',!!issues.length);if(flag){if(issues.length){flag.textContent=issues.length;flag.title=issues.join(' • ')}else flag.remove()}else if(issues.length){const badge=document.createElement('span');badge.className='row-flag';badge.textContent=issues.length;badge.title=issues.join(' • ');tr.querySelector('.row-num').append(badge)}}
 
 async function lookup(id,autoAnnotation=true,mode=recordMode){
- if(mode==='practice')autoAnnotation=false;
  if(lookupBusy)return;
  id=(id||$('docId').value).trim();if(!id)return toast('Choose a document from the queue or enter a document/company ID.');
  const annotationTab=autoAnnotation?window.open('about:blank','_blank'):null;let annotationOpened=false;if(annotationTab)annotationTab.opener=null;
@@ -945,7 +943,7 @@ $('docRows').onclick=e=>{let b=e.target.closest('[data-open]');if(b)lookup(b.dat
 $('back').onclick=()=>page('dashboard');
 $('practiceQueue').onclick=event=>{
  const button=event.target.closest('[data-practice-open]');
- if(button)lookup(button.dataset.practiceOpen,false,'practice');
+ if(button)lookup(button.dataset.practiceOpen,true,'practice');
 };
 $('practiceClaim').onsubmit=async event=>{
  event.preventDefault();
