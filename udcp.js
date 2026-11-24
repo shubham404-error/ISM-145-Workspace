@@ -112,7 +112,7 @@ window.ISM_UDCP = {
         <p class="udcp-period-hint"${missingPeriodFields()?'':' hidden'}>Choose Period Type and Period Number for each header. Use 0 for Annual.</p>
         ${data.periods.length?`<div class="udcp-scroll"><table class="udcp-periods"><thead><tr><th scope="col">Header fields</th>${data.periods.map((p,i)=>`<th scope="col" data-period="${esc(p.id)}"><div class="udcp-period-heading"><span>${esc(periodLabel(p)||'Period '+(i+1))}</span><button type="button" class="link" data-action="duplicate" aria-label="Duplicate header ${i+1}">Duplicate</button><button type="button" class="link" data-action="delete-period" aria-label="Delete header ${i+1}">Delete</button></div></th>`).join('')}</tr></thead><tbody>${fields.map(([key,label,type])=>`<tr><th scope="row">${label}</th>${data.periods.map((p,i)=>`<td data-period="${esc(p.id)}">${editor(key,label+' for period '+(i+1),type,p[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<p class="udcp-empty">Add a reporting period to create the first value column.</p>'}</section>
         <section class="udcp-panel"><div class="udcp-bar"><h2>Industry metrics <small>${data.metrics.length}</small></h2><div class="udcp-actions">
-        <button class="btn ghost" data-action="compact">${compact?'Show attributes':'Hide attributes'}</button><button class="btn ghost" data-action="segment"${!segmentParents(picked).length?' disabled':''}>+ Add segment</button><button class="btn" data-action="metric"${pointOptions.length?'':' disabled'}>+ Add metric</button></div></div>
+        <button class="btn ghost" data-action="compact">${compact?'Show attributes':'Hide attributes'}</button><button class="btn ghost" data-action="remove-row"${picked?'':' disabled'}>Remove row</button><button class="btn ghost" data-action="segment"${!segmentParents(picked).length?' disabled':''}>+ Add segment</button><button class="btn" data-action="metric"${pointOptions.length?'':' disabled'}>+ Add metric</button></div></div>
         ${data.metrics.length?`<div class="udcp-scroll"><table class="udcp-metrics"><thead><tr><th class="udcp-pin" scope="col">Master</th><th class="udcp-pin" scope="col">Data Point / MSID</th>${compact?'':attributes.map(([,label])=>`<th scope="col">${label}</th>`).join('')}${data.periods.map((p,i)=>`<th scope="col" data-value-period="${esc(p.id)}">${esc(periodLabel(p)||'Period '+(i+1))}</th>`).join('')}</tr></thead><tbody>${data.metrics.map(row=>{
           const point=definition(row);
           return `<tr data-row="${esc(row.id)}" class="${row.id===selected?'udcp-selected':''}"><td><input type="checkbox" aria-label="Master row" disabled${row.depth===0?' checked':''}></td><th scope="row"><button type="button" class="udcp-row-select" style="--depth:${Number(row.depth)||0}" data-action="select"><strong>${esc(point?.data_point_name||row.point)}</strong><small>${esc(row.depth?row.segmentType+' · '+row.point:row.point)}</small></button></th>${compact?'':attributes.map(([key,label])=>`<td>${editor(key,label+' for '+(rowLabel(row)||row.point),key==='aor'?'text':choices(point?.[attributeKeys[key]]),(key==='aor' && row.depth ? rowLabel(row) : row[key]))}</td>`).join('')}${data.periods.map((p,i)=>`<td>${editor('value:'+p.id,'Value for period '+(i+1),'text',row.values[p.id])}</td>`).join('')}</tr>`;
@@ -178,8 +178,21 @@ window.ISM_UDCP = {
       if(action==='cancel'){root.querySelector('[data-editor]').close();return;}
       if(action==='select'){selected=button.closest('[data-row]').dataset.row;
         root.querySelectorAll('[data-row]').forEach(row=>row.classList.toggle('udcp-selected',row.dataset.row===selected));
+        root.querySelector('[data-action="remove-row"]').disabled=false;
         root.querySelector('[data-action="segment"]').disabled=!segmentParents(data.metrics.find(row=>row.id===selected)).length;
         return;
+      }
+      if(action==='remove-row'){
+        if(!data.metrics.some(row=>row.id===selected))return;
+        const removed=new Set([selected]);
+        for(let depth=0;depth<3;depth++){
+          for(const row of data.metrics)if(removed.has(row.parent))removed.add(row.id);
+        }
+        const count=removed.size;
+        if(!window.confirm(count===1?'Remove this row and its values?':`Remove this row and its child segments? ${count} rows and their values will be removed.`))return;
+        data.metrics=data.metrics.filter(row=>!removed.has(row.id));
+        selected=null;
+        changed();render();return;
       }
       if(action==='metric'||action==='segment'){showAdd(action==='segment');return;}
       if(action==='compact'){compact=!compact;render();return;}
