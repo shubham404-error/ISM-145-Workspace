@@ -231,7 +231,7 @@ function captureFindings(doc,context,rows,dict,currencies=[]){
  if(!rows.length)add(null,'CAPTURE','Add at least one data row.',[]);
  const currentDates=new Set(rows.filter(r=>!isHeading(r)&&r.report_type==='Current').map(r=>text(r.period_end_date)).filter(Boolean));
  if(currentDates.size>1)rows.forEach((r,i)=>{if(!isHeading(r)&&r.report_type==='Current')add(i,'QC_CURRENT_PED','all Current rows must share one period end date; use Historical for earlier periods.',['report_type','period_end_date']);});
- for(const field of ['company_id','doc_id','industry_name','industry_code','form_type','market'])if(missing(doc[field]))add(null,'QC_IDENTIFIERS',`${field} is missing. Ask an admin to correct the Document sample and reload the document.`,[field]);
+ for(const field of ['company_id','doc_id','industry_name','form_type','market'])if(missing(doc[field]))add(null,'QC_IDENTIFIERS',`${field} is missing. Ask an admin to correct the Document sample and reload the document.`,[field]);
  rows.forEach((r,i)=>{
   if(isHeading(r))return;
   const d=findDef(dict,doc.industry_name,r.ms_id),value=text(r.datapoint_value);
