@@ -41,7 +41,7 @@ window.ISM_UDCP = {
       const annotation=annotationUrl(doc);
       const picked=data.metrics.find(row=>row.id===selected);
       root.innerHTML=`
-        <header class="udcp-heading"><div><div class="udcp-context">${active.scope==='practice'?'Practice':'Assigned'} · ${esc(doc.doc_id)}</div><h1>UDCP collection</h1></div>
+        <header class="udcp-heading"><div><div class="udcp-context">${active.scope==='practice'?'Practice':'Assigned'} · ${esc(doc.doc_id)}</div><h1>${esc(doc.company_name || 'UDCP collection')}</h1></div>
           <div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<button class="btn" data-action="save"${busy?' disabled':''}>Save collection</button></div></header>
         <p class="udcp-state" role="status">${dirty?'Unsaved changes':revision?'Saved to workspace':'Ready to collect'}</p>
         <details class="udcp-panel udcp-meta"><summary>Document metadata</summary><div class="udcp-meta-grid">${metadata.map(([title, entries])=>{
@@ -49,7 +49,7 @@ window.ISM_UDCP = {
           return populated.length?`<section><h3>${title}</h3><dl>${populated.map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl></section>`:'';
         }).join('')}</div></details>
         <section class="udcp-panel"><div class="udcp-bar"><h2>Reporting periods <small>${data.periods.length}</small></h2><button class="btn ghost" data-action="period">+ Add header</button></div>
-        ${data.periods.length?`<div class="udcp-scroll"><table class="udcp-periods"><thead><tr><th scope="col">Header fields</th>${data.periods.map((p,i)=>`<th scope="col" data-period="${esc(p.id)}"><div class="udcp-period-heading"><span>${esc(periodLabel(p)||'Period '+(i+1))}</span><button type="button" class="link" data-action="duplicate" aria-label="Duplicate header ${i+1}">Duplicate</button></div></th>`).join('')}</tr></thead><tbody>${fields.map(([key,label,type])=>`<tr><th scope="row">${label}</th>${data.periods.map((p,i)=>`<td data-period="${esc(p.id)}">${editor(key,label+' for period '+(i+1),type,p[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<p class="udcp-empty">Add a reporting period to create the first value column.</p>'}</section>
+        ${data.periods.length?`<div class="udcp-scroll"><table class="udcp-periods"><thead><tr><th scope="col">Header fields</th>${data.periods.map((p,i)=>`<th scope="col" data-period="${esc(p.id)}"><div class="udcp-period-heading"><span>${esc(periodLabel(p)||'Period '+(i+1))}</span><button type="button" class="link" data-action="duplicate" aria-label="Duplicate header ${i+1}">Duplicate</button><button type="button" class="link" data-action="delete-period" aria-label="Delete header ${i+1}">Delete</button></div></th>`).join('')}</tr></thead><tbody>${fields.map(([key,label,type])=>`<tr><th scope="row">${label}</th>${data.periods.map((p,i)=>`<td data-period="${esc(p.id)}">${editor(key,label+' for period '+(i+1),type,p[key])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<p class="udcp-empty">Add a reporting period to create the first value column.</p>'}</section>
         <section class="udcp-panel"><div class="udcp-bar"><h2>Industry metrics <small>${data.metrics.length}</small></h2><div class="udcp-actions">
         <button class="btn ghost" data-action="compact">${compact?'Show attributes':'Hide attributes'}</button><button class="btn ghost" data-action="segment"${!segmentParents(picked).length?' disabled':''}>+ Add segment</button><button class="btn" data-action="metric"${pointOptions.length?'':' disabled'}>+ Add metric</button></div></div>
         ${data.metrics.length?`<div class="udcp-scroll"><table class="udcp-metrics"><thead><tr><th class="udcp-pin" scope="col">Master</th><th class="udcp-pin" scope="col">Data Point / MSID</th>${compact?'':attributes.map(([,label])=>`<th scope="col">${label}</th>`).join('')}${data.periods.map((p,i)=>`<th scope="col" data-value-period="${esc(p.id)}">${esc(periodLabel(p)||'Period '+(i+1))}</th>`).join('')}</tr></thead><tbody>${data.metrics.map(row=>{
@@ -123,6 +123,14 @@ window.ISM_UDCP = {
       }
       if(action==='metric'||action==='segment'){showAdd(action==='segment');return;}
       if(action==='compact'){compact=!compact;render();return;}
+      if(action==='delete-period'){
+        const id=button.closest('[data-period]').dataset.period;
+        const hasValues=data.metrics.some(row=>String(row.values[id]??'').length>0);
+        if(hasValues&&!window.confirm('Delete this header and its values?'))return;
+        data.periods=data.periods.filter(period=>period.id!==id);
+        for(const row of data.metrics)delete row.values[id];
+        dirty=true;render();return;
+      }
       if(action==='period'||action==='duplicate'){
         const source=action==='duplicate'?data.periods.find(p=>p.id===button.closest('[data-period]').dataset.period):null;
         const period={report:'Current',lengthType:'Months',...source,id:crypto.randomUUID()};
