@@ -156,6 +156,9 @@ window.ISM_UDCP = {
       hasUnsaved:()=>dirty||busy,
       async open(doc_id, scope) {
         if(busy)return;
+        const annotationTab=window.open('about:blank','_blank');
+        if(annotationTab)annotationTab.opener=null;
+        let annotationOpened=false;
         busy=true;
         try{
           if(!await flushGT())return;
@@ -163,8 +166,16 @@ window.ISM_UDCP = {
           if(result.view!=='udcp')throw Error('Could not open UDCP for this document.');
           active={scope,document:result.document};data=result.content;revision=result.revision;
           selected=null;dirty=false;compact=false;
-        }finally{busy=false;}
-        render();navigate('udcp');
+          render();navigate('udcp');
+          const link=annotationUrl(active.document);
+          if(link&&annotationTab&&!annotationTab.closed){
+            annotationTab.location.replace(link);
+            annotationOpened=true;
+          }else if(link){status('Use Open annotation if your browser blocked the new tab.');}
+        }finally{
+          if(annotationTab&&!annotationOpened)annotationTab.close();
+          busy=false;
+        }
       }
     };
   }
