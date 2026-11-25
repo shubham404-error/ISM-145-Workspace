@@ -29,7 +29,7 @@ window.ISM_UDCP = {
     const rowLabel = row => row.depth
       ? row.aor ?? row.name ?? ''
       : row.aor || definition(row)?.data_point_name || row.point;
-    const segmentParents = row => data.metrics.filter(parent => parent.point===row?.point && parent.depth<2);
+    const segmentParents = row => data.metrics.filter(parent => parent.point===row?.point && parent.depth<3);
     const periodLabel = p => [p.report,p.type,p.number!==''&&p.number!=null?`P${p.number}`:'',p.end].filter(Boolean).join(' · ');
     let saveTimer, saving=false, editVersion=0, saveState='idle', saveDetail='';
     const saveLabels={idle:'Ready',pending:'Unsaved',saving:'Saving…',saved:'Saved',error:'Save failed'};
