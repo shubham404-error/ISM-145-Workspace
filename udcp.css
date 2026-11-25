@@ -55,3 +55,17 @@
   #udcp .udcp-heading { grid-template-columns:minmax(0,1fr) auto; }
   #udcp .udcp-heading > .udcp-actions { grid-column:1/-1; justify-content:flex-start; }
 }
+
+.udcp-qc { position:sticky; bottom:0; z-index:5; background:#fff; border:1px solid var(--ud-line); border-radius:12px 12px 0 0; box-shadow:0 -.25rem 1rem #173b5b14; }
+.udcp-qc-toggle { display:flex; align-items:center; justify-content:space-between; width:100%; min-height:2.75rem; padding:.65rem 1rem; border:0; background:#edf4f8; color:var(--ud-ink); font:inherit; font-weight:650; cursor:pointer; }
+.udcp-qc-chevron { width:.55rem; height:.55rem; border:solid currentColor; border-width:0 2px 2px 0; transform:translateY(.15rem) rotate(225deg); }
+.udcp-qc-toggle[aria-expanded="true"] .udcp-qc-chevron { transform:translateY(-.15rem) rotate(45deg); }
+#udcp-qc-list { max-height:min(34vh,16rem); overflow:auto; }
+#udcp-qc-list ul { list-style:none; margin:0; padding:0; }
+#udcp-qc-list li + li { border-top:1px solid var(--ud-line); }
+#udcp-qc-list p { margin:0; padding:.75rem 1rem; color:#52677a; }
+#udcp-qc-list button { width:100%; padding:.6rem 1rem; border:0; background:#fff; color:var(--ud-ink); text-align:left; font:inherit; cursor:pointer; }
+#udcp-qc-list button:hover { background:#f2f7fa; }
+#udcp-qc-list strong { margin-right:.45rem; color:#815200; }
+#udcp-qc-list small { display:block; color:#52677a; }
+.udcp-scroll [data-field]:focus { outline:2px solid #087f8c; outline-offset:1px; }

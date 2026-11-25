@@ -14,7 +14,7 @@ window.ISM_UDCP = {
     const attributes = [['aor','AOR'], ['magnitude','Magnitude'], ['frequency','Frequency'], ['valueType','Value Type'], ['unit','Unit']];
     const attributeKeys = {magnitude:'magnitude',frequency:'frequency_values',valueType:'value_types',unit:'unit'};
     const choices = value => [...new Set(String(value ?? '').split('|').map(item => item.trim()).filter(Boolean))];
-    let active, data, revision, selected, dirty=false, busy=false, compact=false;
+    let active, data, revision, selected, dirty=false, busy=false, compact=false, qcOpen=false;
 
     function optionList(options, current) {
       return '<option value=""></option>'+options.map(option => `<option value="${esc(option)}"${option===current?' selected':''}>${esc(option)}</option>`).join('');
@@ -43,6 +43,70 @@ window.ISM_UDCP = {
       }
       badge.title=detail;
     }
+    const numberPattern = /^[+-]?(?:(?:\d+|\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})(?:\.\d*)?|\.\d+)$/;
+
+    function qualityWarnings() {
+      const warnings = [];
+      const currentEnds = new Set(data.periods.filter(p => p.report === 'Current' && p.end).map(p => p.end));
+      for (const period of data.periods) {
+        const add = (field, message) => warnings.push({ period, field, message });
+        if (!period.end) add('end', 'Period end date is required.');
+        if (!period.fiscal) add('fiscal', 'Fiscal year end is required.');
+        if (period.end && period.fiscal && period.end > period.fiscal) {
+          add('end', 'Period end cannot be later than fiscal year end.');
+        }
+        if (period.report === 'Current' && period.end && currentEnds.size > 1) {
+          add('report', 'Current headers must share one period end date. Use Historical for earlier periods.');
+        }
+        if (!period.type) add('type', 'Choose a period type.');
+        if (!['0','1','2','3','4'].includes(period.number)) add('number', 'Choose a period number.');
+        else if (period.type && (period.type === 'Annual') !== (period.number === '0')) {
+          add('number', 'Use period number 0 for Annual and 1–4 for other period types.');
+        }
+      }
+      for (const row of data.metrics) {
+        for (const period of data.periods) {
+          const raw = String(row.values[period.id] ?? '');
+          const value = raw.trim();
+          if (!value) continue;
+          const add = message => warnings.push({ row, period, field:'value:'+period.id, message });
+          if (/\s/.test(raw)) add('The value contains whitespace.');
+          if (!numberPattern.test(value)) add('Enter a numeric value. Commas may be used as digit separators.');
+          else if (Number(value.replaceAll(',','')) === 0) add('Verify the zero value against the source.');
+          if (!row.magnitude || row.magnitude === '-') add('Magnitude is missing for this value.');
+          if (!row.valueType || row.valueType === '-') add('Value type is missing for this value.');
+        }
+      }
+      return warnings;
+    }
+
+    function refreshQualityChecks() {
+      const warnings = qualityWarnings();
+      const count = root.querySelector('.udcp-qc-count');
+      const label = 'Quality Checks ('+warnings.length+')';
+      if (count.textContent !== label) count.textContent = label;
+      const list = root.querySelector('#udcp-qc-list');
+      list.innerHTML = warnings.length ? '<ul>'+warnings.map(({ row, period, field, message }) => {
+        const label = row ? [definition(row)?.data_point_name, row.point, row.depth ? rowLabel(row) : '']
+          .filter(Boolean).join(' · ') : 'Reporting period';
+        const periodName = periodLabel(period) || 'Period '+(data.periods.indexOf(period)+1);
+        return '<li><button type="button" data-action="qc-target" data-qc-row="'+esc(row?.id)+
+          '" data-qc-period="'+esc(period.id)+'" data-qc-field="'+esc(field)+'"><strong>Warning</strong> '+
+          esc(message)+'<small>'+esc(label)+' · '+esc(periodName)+'</small></button></li>';
+      }).join('')+'</ul>' : '<p>No warnings</p>';
+    }
+
+    function focusWarning(button) {
+      const { qcRow, qcPeriod, qcField } = button.dataset;
+      const scope = qcRow
+        ? '[data-row="'+CSS.escape(qcRow)+'"]'
+        : 'td[data-period="'+CSS.escape(qcPeriod)+'"]';
+      const field = root.querySelector(scope+' [data-field="'+CSS.escape(qcField)+'"]');
+      if (!field) return;
+      field.scrollIntoView({ block:'center', inline:'center' });
+      field.focus({ preventScroll:true });
+    }
+
     function refreshPeriodHint(){
       root.querySelector('.udcp-period-hint').hidden=!missingPeriodFields();
     }
@@ -60,6 +124,7 @@ window.ISM_UDCP = {
       cacheDraft();
       status(saving?'saving':'pending');
       refreshPeriodHint();
+      refreshQualityChecks();
       scheduleSave();
     }
     async function saveLatest(){
@@ -102,7 +167,7 @@ window.ISM_UDCP = {
       const picked=data.metrics.find(row=>row.id===selected);
       root.innerHTML=`
         <header class="udcp-heading"><div><div class="udcp-context">${active.scope==='practice'?'Practice':'Assigned'} · ${esc(doc.doc_id)}</div><h1>${esc(doc.company_name || 'UDCP collection')}</h1></div>
-          <span class="udcp-save-badge" role="status" data-state="${saveState}" title="${esc(saveDetail)}">${saveLabels[saveState]}</span><div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(methodology)}">Open methodology ↗</a><button class="btn" data-action="save"${busy?' disabled':''}>Save collection</button></div></header>
+          <span class="udcp-save-badge" role="status" data-state="${saveState}" title="${esc(saveDetail)}">${saveLabels[saveState]}</span><div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(methodology)}">Open methodology ↗</a><button class="btn" data-action="save">Save collection</button></div></header>
 
         <details class="udcp-panel udcp-meta"><summary>Document metadata</summary><div class="udcp-meta-grid">${metadata.map(([title, entries])=>{
           const populated=entries.filter(([,value])=>value && value!=='-');
@@ -117,7 +182,14 @@ window.ISM_UDCP = {
           const point=definition(row);
           return `<tr data-row="${esc(row.id)}" class="${row.id===selected?'udcp-selected':''}"><td><input type="checkbox" aria-label="Master row" disabled${row.depth===0?' checked':''}></td><th scope="row"><button type="button" class="udcp-row-select" style="--depth:${Number(row.depth)||0}" data-action="select"><strong>${esc(point?.data_point_name||row.point)}</strong><small>${esc(row.depth?row.segmentType+' · '+row.point:row.point)}</small></button></th>${compact?'':attributes.map(([key,label])=>`<td>${key==='frequency'&&row.depth===0?'<span aria-label="Frequency does not apply to master rows">—</span>':editor(key,label+' for '+(rowLabel(row)||row.point),key==='aor'?'text':choices(point?.[attributeKeys[key]]),(key==='aor' && row.depth ? rowLabel(row) : row[key]))}</td>`).join('')}${data.periods.map((p,i)=>`<td>${editor('value:'+p.id,'Value for period '+(i+1),'text',row.values[p.id])}</td>`).join('')}</tr>`;
         }).join('')}</tbody></table></div>`:`<p class="udcp-empty">${pointOptions.length?'Add a metric from the industry dictionary.':'No dictionary entries are available for this industry.'}</p>`}
-        </section><dialog class="udcp-dialog" data-editor></dialog>`;
+        </section>
+        <footer class="udcp-qc">
+          <div id="udcp-qc-list"${qcOpen?'':' hidden'}></div>
+          <button type="button" class="udcp-qc-toggle" data-action="qc-toggle" aria-controls="udcp-qc-list" aria-expanded="${qcOpen}">
+            <span class="udcp-qc-count" aria-live="polite"></span><span class="udcp-qc-chevron" aria-hidden="true"></span>
+          </button>
+        </footer><dialog class="udcp-dialog" data-editor></dialog>`;
+      refreshQualityChecks();
       root.querySelectorAll('.udcp-scroll').forEach((el,i)=>{if(scrollers[i])[el.scrollLeft,el.scrollTop]=scrollers[i];});
     }
 
@@ -177,6 +249,13 @@ window.ISM_UDCP = {
       const button=event.target.closest('[data-action]');
       if(!button||busy)return;
       const action=button.dataset.action;
+      if(action==='qc-toggle'){
+        qcOpen=!qcOpen;
+        button.setAttribute('aria-expanded',String(qcOpen));
+        root.querySelector('#udcp-qc-list').hidden=!qcOpen;
+        return;
+      }
+      if(action==='qc-target'){focusWarning(button);return;}
       if(action==='back'){navigate('dashboard');return;}
       if(action==='cancel'){root.querySelector('[data-editor]').close();return;}
       if(action==='select'){selected=button.closest('[data-row]').dataset.row;
@@ -231,7 +310,7 @@ window.ISM_UDCP = {
           const result=await request('choose',{doc_id,scope,view:'udcp'});
           if(result.view!=='udcp')throw Error('Could not open UDCP for this document.');
           active={scope,document:result.document};data=result.content;revision=result.revision;
-          selected=null;dirty=false;compact=false;saveState=revision?'saved':'idle';saveDetail='';
+          selected=null;dirty=false;compact=false;qcOpen=false;saveState=revision?'saved':'idle';saveDetail='';
           let draft;
           try{draft=JSON.parse(localStorage.getItem(draftKey())||'null');}catch{}
           if(draft?.revision===revision&&draft.content&&window.confirm('Restore unsaved changes from this browser?')){
