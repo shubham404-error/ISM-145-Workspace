@@ -84,16 +84,37 @@ window.ISM_UDCP = {
             if (row.depth) warnings.push({ row, period, field:'value:'+period.id, message:'Enter a value for this segment.' });
             continue;
           }
-          const add = message => warnings.push({ row, period, field:'value:'+period.id, message });
+          const add = (message, code) => warnings.push({ row, period, field:'value:'+period.id, message, code });
+          const numeric = numberPattern.test(value) ? Number(value.replaceAll(',','')) : NaN;
+          const missing = item => !String(item ?? '').trim() || String(item).trim()==='-';
+          const frequency = String(row.frequency ?? '').trim();
+          const trailing = /^(?:LTM|TTM|LTM\s*\/\s*TTM)$/i.test(frequency);
+          const periodNumber = Number(period.number);
+          const discreteLength = { Months:[3], Weeks:[12,13], Days:[84,90] }[period.lengthType] || [];
           if (/\s/.test(raw)) add('The value contains whitespace.');
-          if (!numberPattern.test(value)) add('Enter a numeric value. Commas may be used as digit separators.');
-          else if (Number(value.replaceAll(',','')) === 0) add('Verify the zero value against the source.');
-          if (row.depth && (!row.unit || row.unit === '-')) add('Unit is missing for this segment value.');
+          if (!Number.isFinite(numeric)) {
+            add('Invalid value collected. Enter a whole number.', 'DQC_7');
+          } else if (!Number.isInteger(numeric)) {
+            add('The collected value is not an integer.', 'DQC_7');
+          } else if (numeric === 0) {
+            add('Verify the zero value against the source.', 'DQC_8');
+          }
+          if (missing(row.magnitude)) add('Magnitude is missing for this value.', 'DQC_1');
+          if (missing(row.unit)) add('Unit is missing for this value.', 'DQC_2');
+          if (row.depth && period.type && period.type !== 'Annual' && missing(frequency)) {
+            add('Frequency is missing for this non-annual value.', 'DQC_15');
+          }
+          if (period.type === 'Annual' && !missing(frequency)) {
+            if (trailing) add('LTM/TTM frequency cannot be used under an annual header.', 'DQC_21');
+            else if (row.depth) add('Frequency should be blank under an annual header.', 'DQC_16');
+          }
+          if (trailing && [2,3,4].includes(periodNumber) && discreteLength.includes(Number(period.length))) {
+            add('LTM/TTM values should be collected under the YTD header.', 'DQC_14');
+          }
           if (definition(row)?.unit_currency_factor_flag === 'Currency' && !period.currency &&
               !/^per[\s-]+unit$/i.test(row.unit ?? '')) {
             add('Currency is missing from the reporting period.');
           }
-          if (!row.magnitude || row.magnitude === '-') add('Magnitude is missing for this value.');
           if (!row.valueType || row.valueType === '-') add('Value type is missing for this value.');
         }
       }
@@ -106,13 +127,13 @@ window.ISM_UDCP = {
       const label = 'Quality Checks ('+warnings.length+')';
       if (count.textContent !== label) count.textContent = label;
       const list = root.querySelector('#udcp-qc-list');
-      list.innerHTML = warnings.length ? '<ul>'+warnings.map(({ row, period, field, message }) => {
+      list.innerHTML = warnings.length ? '<ul>'+warnings.map(({ row, period, field, message, code }) => {
         const label = row ? [definition(row)?.data_point_name, row.point, row.depth ? rowLabel(row) : '']
           .filter(Boolean).join(' · ') : 'Reporting period';
         const periodName = periodLabel(period) || 'Period '+(data.periods.indexOf(period)+1);
         return '<li><button type="button" data-action="qc-target" data-qc-row="'+esc(row?.id)+
           '" data-qc-period="'+esc(period.id)+'" data-qc-field="'+esc(field)+'"><strong>Warning</strong> '+
-          esc(message)+'<small>'+esc(label)+' · '+esc(periodName)+'</small></button></li>';
+          (code ? esc(code)+' · ' : '')+esc(message)+'<small>'+esc(label)+' · '+esc(periodName)+'</small></button></li>';
       }).join('')+'</ul>' : '<p>No warnings</p>';
     }
 
