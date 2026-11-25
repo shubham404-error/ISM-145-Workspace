@@ -1,7 +1,7 @@
 'use strict';
 
 window.ISM_UDCP = {
-  create({ root, request, dictionary, currencies, escape, navigate, annotationUrl, methodologyUrl, draftOwner, flushGT, notify, onStatusSaved }) {
+  create({ root, request, dictionary, currencies, escape, navigate, annotationUrl, methodologyUrl, draftOwner, flushGT, notify, onStatusSaved, excel }) {
     const esc = value => escape(value ?? '');
     const fields = [
       ['end','Period End Date','date'], ['fiscal','Fiscal Year End','date'],
@@ -182,6 +182,47 @@ window.ISM_UDCP = {
       return !dirty;
     }
 
+    async function copyToExcel() {
+      const doc=active.document;
+      const parents=new Map(data.metrics.map(row=>[row.id,row]));
+      const rows=[];
+      for(const row of data.metrics){
+        const point=definition(row);
+        const parent=parents.get(row.parent);
+        for(const period of data.periods){
+          const value=row.values[period.id];
+          if(value==null||String(value).trim()==='')continue;
+          rows.push([
+            doc.company_id,doc.doc_id,period.end,period.fiscal,period.number,
+            point?.data_point_name||row.point,row.point,row.aor??row.name,
+            parent?rowLabel(parent):'',row.depth?'No':'Yes',row.depth?row.segmentType:'',
+            value,row.magnitude,row.unit,period.currency,row.depth?row.frequency:'',
+            row.valueType,period.report,period.type,period.length,period.lengthType
+          ]);
+        }
+      }
+      if(!rows.length){notify('Enter at least one metric value to copy.');return;}
+      const text=excel.tsv(rows);
+      try{
+        if(window.ClipboardItem&&navigator.clipboard?.write){
+          await navigator.clipboard.write([new ClipboardItem({
+            'text/plain':new Blob([text],{type:'text/plain'}),
+            'text/html':new Blob([excel.html(rows)],{type:'text/html'})
+          })]);
+        }else{
+          await navigator.clipboard.writeText(text);
+        }
+        notify('Copied '+rows.length+' row(s). Paste as values into cell A2 of the UDCP template.');
+      }catch{
+        const dialog=root.querySelector('[data-editor]');
+        dialog.innerHTML='<h2>Copy to Excel</h2><label>Copy these rows and paste as values into cell A2 of the UDCP template.<textarea rows="6" readonly></textarea></label><button type="button" class="btn ghost" data-action="cancel">Close</button>';
+        const field=dialog.querySelector('textarea');
+        field.value=text;
+        dialog.showModal();
+        field.select();
+      }
+    }
+
     function render() {
       const scrollers = [...root.querySelectorAll('.udcp-scroll')].map(el => [el.scrollLeft,el.scrollTop]);
       const doc=active.document;
@@ -192,7 +233,7 @@ window.ISM_UDCP = {
       const picked=data.metrics.find(row=>row.id===selected);
       root.innerHTML=`
         <header class="udcp-heading"><div><div class="udcp-context">${active.scope==='practice'?'Practice':'Assigned'} · ${esc(doc.doc_id)}</div><h1>${esc(doc.company_name || 'UDCP collection')}</h1><small class="udcp-collection-status"></small></div>
-          <span class="udcp-save-badge" role="status" data-state="${saveState}" title="${esc(saveDetail)}">${saveLabels[saveState]}</span><div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(methodology)}">Open methodology ↗</a><button class="btn" data-action="save">Save collection</button><button type="button" class="btn ghost" data-action="complete">Mark as completed</button><button type="button" class="btn ghost danger" data-action="junk">Junk</button></div></header>
+          <span class="udcp-save-badge" role="status" data-state="${saveState}" title="${esc(saveDetail)}">${saveLabels[saveState]}</span><div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(methodology)}">Open methodology ↗</a><button class="btn" data-action="save">Save collection</button><button type="button" class="btn ghost" data-action="copy-excel">Copy to Excel</button><button type="button" class="btn ghost" data-action="complete">Mark as completed</button><button type="button" class="btn ghost danger" data-action="junk">Junk</button></div></header>
 
         <details class="udcp-panel udcp-meta"><summary>Document metadata</summary><div class="udcp-meta-grid">${metadata.map(([title, entries])=>{
           const populated=entries.filter(([,value])=>value && value!=='-');
@@ -330,6 +371,7 @@ window.ISM_UDCP = {
         notify(saved?'Collection marked '+collectionStatus()+'.':'Status pending. Check the save indicator and retry if needed.');
         return;
       }
+      if(action==='copy-excel'){await copyToExcel();return;}
       if(action==='save')await saveLatest();
     });
 
