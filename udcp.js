@@ -1,7 +1,7 @@
 'use strict';
 
 window.ISM_UDCP = {
-  create({ root, request, dictionary, currencies, escape, navigate, annotationUrl, methodologyUrl, draftOwner, flushGT }) {
+  create({ root, request, dictionary, currencies, escape, navigate, annotationUrl, methodologyUrl, draftOwner, flushGT, notify, onStatusSaved }) {
     const esc = value => escape(value ?? '');
     const fields = [
       ['end','Period End Date','date'], ['fiscal','Fiscal Year End','date'],
@@ -43,6 +43,13 @@ window.ISM_UDCP = {
       }
       badge.title=detail;
     }
+    const collectionStatus = () => data.status || 'in progress';
+    const statusLabel = { 'in progress':'In progress', completed:'Completed', junk:'Junk' };
+    function refreshCollectionStatus(){
+      root.querySelector('.udcp-collection-status').textContent=statusLabel[collectionStatus()];
+      root.querySelector('[data-action="complete"]').disabled=collectionStatus()==='completed';
+      root.querySelector('[data-action="junk"]').disabled=collectionStatus()==='junk';
+    }
     const numberPattern = /^[+-]?(?:(?:\d+|\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})(?:\.\d*)?|\.\d+)$/;
 
     function qualityWarnings() {
@@ -58,6 +65,11 @@ window.ISM_UDCP = {
         if (period.report === 'Current' && period.end && currentEnds.size > 1) {
           add('report', 'Current headers must share one period end date. Use Historical for earlier periods.');
         }
+        if (!['Current','Historical'].includes(period.report)) add('report', 'Choose Current or Historical.');
+        if (!/^\d+$/.test(String(period.length ?? '')) || Number(period.length)>365) {
+          add('length', 'Enter a whole-number period length from 0 to 365.');
+        }
+        if (!period.lengthType) add('lengthType', 'Choose a period length type.');
         if (!period.type) add('type', 'Choose a period type.');
         if (!['0','1','2','3','4'].includes(period.number)) add('number', 'Choose a period number.');
         else if (period.type && (period.type === 'Annual') !== (period.number === '0')) {
@@ -68,11 +80,19 @@ window.ISM_UDCP = {
         for (const period of data.periods) {
           const raw = String(row.values[period.id] ?? '');
           const value = raw.trim();
-          if (!value) continue;
+          if (!value) {
+            if (row.depth) warnings.push({ row, period, field:'value:'+period.id, message:'Enter a value for this segment.' });
+            continue;
+          }
           const add = message => warnings.push({ row, period, field:'value:'+period.id, message });
           if (/\s/.test(raw)) add('The value contains whitespace.');
           if (!numberPattern.test(value)) add('Enter a numeric value. Commas may be used as digit separators.');
           else if (Number(value.replaceAll(',','')) === 0) add('Verify the zero value against the source.');
+          if (row.depth && (!row.unit || row.unit === '-')) add('Unit is missing for this segment value.');
+          if (definition(row)?.unit_currency_factor_flag === 'Currency' && !period.currency &&
+              !/^per[\s-]+unit$/i.test(row.unit ?? '')) {
+            add('Currency is missing from the reporting period.');
+          }
           if (!row.magnitude || row.magnitude === '-') add('Magnitude is missing for this value.');
           if (!row.valueType || row.valueType === '-') add('Value type is missing for this value.');
         }
@@ -118,7 +138,9 @@ window.ISM_UDCP = {
       clearTimeout(saveTimer);
       saveTimer=setTimeout(saveLatest,800);
     }
-    function changed(){
+    function changed(nextStatus='in progress'){
+      data.status=nextStatus;
+      refreshCollectionStatus();
       editVersion++;
       dirty=true;
       cacheDraft();
@@ -130,17 +152,19 @@ window.ISM_UDCP = {
     async function saveLatest(){
       clearTimeout(saveTimer);
       if(!dirty||saving||busy)return;
-      if(missingPeriodFields()){
+      if(missingPeriodFields()&&collectionStatus()!=='junk'){
         status('pending');
         return;
       }
       const version=editVersion;
+      const content=structuredClone(data);
       saving=true;
       status('saving');
       try{
-        const result=await request('save',{scope:active.scope,doc_id:active.document.doc_id,revision,content:structuredClone(data)});
+        const result=await request('save',{scope:active.scope,doc_id:active.document.doc_id,revision,content});
         if(!Number.isInteger(result.revision)||result.revision!==revision+1)throw Error('Save was not confirmed');
         revision=result.revision;
+        onStatusSaved(active.document.doc_id,active.scope,content.status||'in progress',content.metrics.length);
         dirty=version!==editVersion;
         if(dirty){
           cacheDraft();
@@ -155,6 +179,7 @@ window.ISM_UDCP = {
         saving=false;
         if(dirty&&version!==editVersion)scheduleSave();
       }
+      return !dirty;
     }
 
     function render() {
@@ -166,8 +191,8 @@ window.ISM_UDCP = {
       const methodology=methodologyUrl(doc.industry_name);
       const picked=data.metrics.find(row=>row.id===selected);
       root.innerHTML=`
-        <header class="udcp-heading"><div><div class="udcp-context">${active.scope==='practice'?'Practice':'Assigned'} · ${esc(doc.doc_id)}</div><h1>${esc(doc.company_name || 'UDCP collection')}</h1></div>
-          <span class="udcp-save-badge" role="status" data-state="${saveState}" title="${esc(saveDetail)}">${saveLabels[saveState]}</span><div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(methodology)}">Open methodology ↗</a><button class="btn" data-action="save">Save collection</button></div></header>
+        <header class="udcp-heading"><div><div class="udcp-context">${active.scope==='practice'?'Practice':'Assigned'} · ${esc(doc.doc_id)}</div><h1>${esc(doc.company_name || 'UDCP collection')}</h1><small class="udcp-collection-status"></small></div>
+          <span class="udcp-save-badge" role="status" data-state="${saveState}" title="${esc(saveDetail)}">${saveLabels[saveState]}</span><div class="udcp-actions"><button data-action="back" class="btn ghost">← Overview</button>${annotation?`<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(annotation)}">Open annotation ↗</a>`:''}<a class="btn ghost" target="_blank" rel="noopener noreferrer" href="${esc(methodology)}">Open methodology ↗</a><button class="btn" data-action="save">Save collection</button><button type="button" class="btn ghost" data-action="complete">Mark as completed</button><button type="button" class="btn ghost danger" data-action="junk">Junk</button></div></header>
 
         <details class="udcp-panel udcp-meta"><summary>Document metadata</summary><div class="udcp-meta-grid">${metadata.map(([title, entries])=>{
           const populated=entries.filter(([,value])=>value && value!=='-');
@@ -190,6 +215,7 @@ window.ISM_UDCP = {
           </button>
         </footer><dialog class="udcp-dialog" data-editor></dialog>`;
       refreshQualityChecks();
+      refreshCollectionStatus();
       root.querySelectorAll('.udcp-scroll').forEach((el,i)=>{if(scrollers[i])[el.scrollLeft,el.scrollTop]=scrollers[i];});
     }
 
@@ -291,6 +317,18 @@ window.ISM_UDCP = {
         const period={report:'Current',lengthType:'Months',...source,id:crypto.randomUUID()};
         data.periods.splice(source?data.periods.indexOf(source)+1:data.periods.length,0,period);
         changed();render();return;
+      }
+      if(action==='complete'||action==='junk'){
+        if(saving){notify('Wait for the current save to finish, then try again.');return;}
+        if(action==='complete'&&missingPeriodFields()){
+          notify('Choose a valid Period Type and Period Number before completing.');
+          return;
+        }
+        if(action==='junk'&&!window.confirm('Mark this collection as junk? Its data will be kept.'))return;
+        changed(action==='complete'?'completed':'junk');
+        const saved=await saveLatest();
+        notify(saved?'Collection marked '+collectionStatus()+'.':'Status pending. Check the save indicator and retry if needed.');
+        return;
       }
       if(action==='save')await saveLatest();
     });
