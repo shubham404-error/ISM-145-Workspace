@@ -194,10 +194,11 @@ window.ISM_UDCP = {
           if(value==null||String(value).trim()==='')continue;
           rows.push([
             doc.company_id,doc.doc_id,period.end,period.fiscal,period.number,
+            period.report,period.type,period.length,period.lengthType,
             point?.data_point_name||row.point,row.point,row.aor??row.name,
             parent?rowLabel(parent):'',row.depth?'No':'Yes',row.depth?row.segmentType:'',
             value,row.magnitude,row.unit,period.currency,row.depth?row.frequency:'',
-            row.valueType,period.report,period.type,period.length,period.lengthType
+            row.valueType
           ]);
         }
       }
