@@ -29,7 +29,7 @@ window.ISM_UDCP = {
     const rowLabel = row => row.depth
       ? row.aor ?? row.name ?? ''
       : row.aor || definition(row)?.data_point_name || row.point;
-    const segmentParents = row => data.metrics.filter(parent => parent.point===row?.point && parent.depth<3);
+    const segmentParents = row => data.metrics.filter(parent => parent.point===row?.point && parent.depth<2);
     const periodLabel = p => [p.report,p.type,p.number!==''&&p.number!=null?`P${p.number}`:'',p.end].filter(Boolean).join(' · ');
     let saveTimer, saving=false, editVersion=0, saveState='idle', saveDetail='';
     const saveLabels={idle:'Ready',pending:'Unsaved',saving:'Saving…',saved:'Saved',error:'Save failed'};
@@ -115,7 +115,7 @@ window.ISM_UDCP = {
         <button class="btn ghost" data-action="compact">${compact?'Show attributes':'Hide attributes'}</button><button class="btn ghost" data-action="remove-row"${picked?'':' disabled'}>Remove row</button><button class="btn ghost" data-action="segment"${!segmentParents(picked).length?' disabled':''}>+ Add segment</button><button class="btn" data-action="metric"${pointOptions.length?'':' disabled'}>+ Add metric</button></div></div>
         ${data.metrics.length?`<div class="udcp-scroll"><table class="udcp-metrics"><thead><tr><th class="udcp-pin" scope="col">Master</th><th class="udcp-pin" scope="col">Data Point / MSID</th>${compact?'':attributes.map(([,label])=>`<th scope="col">${label}</th>`).join('')}${data.periods.map((p,i)=>`<th scope="col" data-value-period="${esc(p.id)}">${esc(periodLabel(p)||'Period '+(i+1))}</th>`).join('')}</tr></thead><tbody>${data.metrics.map(row=>{
           const point=definition(row);
-          return `<tr data-row="${esc(row.id)}" class="${row.id===selected?'udcp-selected':''}"><td><input type="checkbox" aria-label="Master row" disabled${row.depth===0?' checked':''}></td><th scope="row"><button type="button" class="udcp-row-select" style="--depth:${Number(row.depth)||0}" data-action="select"><strong>${esc(point?.data_point_name||row.point)}</strong><small>${esc(row.depth?row.segmentType+' · '+row.point:row.point)}</small></button></th>${compact?'':attributes.map(([key,label])=>`<td>${editor(key,label+' for '+(rowLabel(row)||row.point),key==='aor'?'text':choices(point?.[attributeKeys[key]]),(key==='aor' && row.depth ? rowLabel(row) : row[key]))}</td>`).join('')}${data.periods.map((p,i)=>`<td>${editor('value:'+p.id,'Value for period '+(i+1),'text',row.values[p.id])}</td>`).join('')}</tr>`;
+          return `<tr data-row="${esc(row.id)}" class="${row.id===selected?'udcp-selected':''}"><td><input type="checkbox" aria-label="Master row" disabled${row.depth===0?' checked':''}></td><th scope="row"><button type="button" class="udcp-row-select" style="--depth:${Number(row.depth)||0}" data-action="select"><strong>${esc(point?.data_point_name||row.point)}</strong><small>${esc(row.depth?row.segmentType+' · '+row.point:row.point)}</small></button></th>${compact?'':attributes.map(([key,label])=>`<td>${key==='frequency'&&row.depth===0?'<span aria-label="Frequency does not apply to master rows">—</span>':editor(key,label+' for '+(rowLabel(row)||row.point),key==='aor'?'text':choices(point?.[attributeKeys[key]]),(key==='aor' && row.depth ? rowLabel(row) : row[key]))}</td>`).join('')}${data.periods.map((p,i)=>`<td>${editor('value:'+p.id,'Value for period '+(i+1),'text',row.values[p.id])}</td>`).join('')}</tr>`;
         }).join('')}</tbody></table></div>`:`<p class="udcp-empty">${pointOptions.length?'Add a metric from the industry dictionary.':'No dictionary entries are available for this industry.'}</p>`}
         </section><dialog class="udcp-dialog" data-editor></dialog>`;
       root.querySelectorAll('.udcp-scroll').forEach((el,i)=>{if(scrollers[i])[el.scrollLeft,el.scrollTop]=scrollers[i];});
@@ -130,7 +130,7 @@ window.ISM_UDCP = {
         ? choices(definition(picked)?.segment_type||'Business|Business Unit|Geography|Product or Services|Department|Hospital|Healthcare Facility Type|Brands or Franchise|Customer Type|Contract Type|Sales or Distribution Channel|Property Type|Model|Other')
         : dictionary.filter(point=>point.industry===active.document.industry_name).sort((a,b)=>a.data_point_name.localeCompare(b.data_point_name));
       dialog.innerHTML=`<form><h2>${segment?'Add segment':'Add metric'}</h2>${segment
-        ? `<label>Segment type<select name="type" required>${optionList(options,'')}</select></label><label>Parent name<select name="parent" required>${parents.map(parent=>`<option value="${esc(parent.id)}"${parent===defaultParent?' selected':''}>${esc(rowLabel(parent)||parent.point)} · ${parent.depth?'Level '+parent.depth:'Master'} · Row ${data.metrics.indexOf(parent)+1}</option>`).join('')}</select></label><label>AOR<input name="aor" required></label><label style="display:flex;align-items:center;gap:.5rem"><input type="checkbox" name="copy" style="width:auto"> Copy parent attributes</label>`
+        ? `<label>Segment type<select name="type" required>${optionList(options,'')}</select></label><label>Parent name<select name="parent" required>${parents.map(parent=>`<option value="${esc(parent.id)}"${parent===defaultParent?' selected':''}>${esc(rowLabel(parent)||parent.point)} · ${parent.depth?'Layer '+(parent.depth+1):'Master'} · Row ${data.metrics.indexOf(parent)+1}</option>`).join('')}</select></label><label>AOR<input name="aor" required></label><label style="display:flex;align-items:center;gap:.5rem"><input type="checkbox" name="copy" style="width:auto"> Copy parent attributes</label>`
         : `<label>Data point<select name="point" required><option value=""></option>${options.map(point=>`<option value="${esc(point.data_point_id)}">${esc(point.data_point_name)} · ${esc(point.data_point_id)}</option>`).join('')}</select></label>`}
         <div class="udcp-actions"><button type="button" class="btn ghost" data-action="cancel">Cancel</button><button class="btn">Add</button></div></form>`;
       dialog.querySelector('form').onsubmit=event=>{
@@ -141,7 +141,9 @@ window.ISM_UDCP = {
         if(segment&&(!parent||!aor.trim())){event.currentTarget.elements.aor.focus();return;}
         const row={id:crypto.randomUUID(),parent:parent?.id??null,depth:parent?parent.depth+1:0,point:parent?parent.point:fields.get('point'),aor,segmentType:segment?fields.get('type'):'',values:{}};
         if(parent&&fields.has('copy')){
-          for(const key of Object.keys(attributeKeys))row[key]=parent[key]??'';
+          for(const key of Object.keys(attributeKeys)){
+            if(key!=='frequency'||parent.depth>0)row[key]=parent[key]??'';
+          }
         }
         let at=segment?data.metrics.indexOf(parent)+1:data.metrics.length;
         while(segment&&at<data.metrics.length&&data.metrics[at].depth>parent.depth)at++;
@@ -159,7 +161,8 @@ window.ISM_UDCP = {
       const record=period?data.periods.find(p=>p.id===period):data.metrics.find(row=>row.id===rowId);
       const value=event.target.value;
       if(field.startsWith('value:'))record.values[field.slice(6)]=value;
-      else record[field]=value;
+      else if(field!=='frequency'||record.depth!==0)record[field]=value;
+      else return;
       changed();
     });
     root.addEventListener('change',event=>{
