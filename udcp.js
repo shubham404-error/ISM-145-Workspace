@@ -190,8 +190,7 @@ window.ISM_UDCP = {
         const point=definition(row);
         const parent=parents.get(row.parent);
         for(const period of data.periods){
-          const value=row.values[period.id];
-          if(value==null||String(value).trim()==='')continue;
+          const value=row.values[period.id] ?? '';
           rows.push([
             doc.company_id,doc.doc_id,period.end,period.fiscal,period.number,
             period.report,period.type,period.length,period.lengthType,
@@ -202,7 +201,7 @@ window.ISM_UDCP = {
           ]);
         }
       }
-      if(!rows.length){notify('Enter at least one metric value to copy.');return;}
+      if(!rows.length){notify('Add at least one metric and one reporting period to copy.');return;}
       const text=excel.tsv(rows);
       try{
         if(window.ClipboardItem&&navigator.clipboard?.write){
