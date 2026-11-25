@@ -76,6 +76,19 @@ window.ISM_UDCP = {
           add('number', 'Use period number 0 for Annual and 1–4 for other period types.');
         }
       }
+      const numericValue = raw => {
+        const value = String(raw ?? '').trim();
+        return numberPattern.test(value) ? Number(value.replaceAll(',','')) : NaN;
+      };
+      const ytdComparisons = new Map();
+      for (const period of data.periods) {
+        if (period.type !== 'Quarter' || period.lengthType !== 'Months' ||
+            Number(period.length) !== 3 || ![2,3,4].includes(Number(period.number)) || !period.end) continue;
+        const candidates = data.periods.filter(ytd => ytd.type === 'Quarter' && ytd.lengthType === 'Months' &&
+          Number(ytd.length) > 3 && Number(ytd.number) === Number(period.number) && ytd.end === period.end &&
+          ytd.fiscal === period.fiscal && ytd.report === period.report);
+        if (candidates.length === 1) ytdComparisons.set(period.id, candidates[0]);
+      }
       for (const row of data.metrics) {
         for (const period of data.periods) {
           const raw = String(row.values[period.id] ?? '');
@@ -85,7 +98,7 @@ window.ISM_UDCP = {
             continue;
           }
           const add = (message, code) => warnings.push({ row, period, field:'value:'+period.id, message, code });
-          const numeric = numberPattern.test(value) ? Number(value.replaceAll(',','')) : NaN;
+          const numeric = numericValue(value);
           const missing = item => !String(item ?? '').trim() || String(item).trim()==='-';
           const frequency = String(row.frequency ?? '').trim();
           const trailing = /^(?:LTM|TTM|LTM\s*\/\s*TTM)$/i.test(frequency);
@@ -95,9 +108,18 @@ window.ISM_UDCP = {
           if (!Number.isFinite(numeric)) {
             add('Invalid value collected. Enter a whole number.', 'DQC_7');
           } else if (!Number.isInteger(numeric)) {
-            add('The collected value is not an integer.', 'DQC_7');
+            if (row.valueType && row.valueType !== '-' && row.valueType.trim().toLowerCase() !== 'average') {
+              add('A decimal was collected for a value type other than Average.', 'DQC_12');
+            } else {
+              add('The collected value is not an integer.', 'DQC_7');
+            }
           } else if (numeric === 0) {
             add('Verify the zero value against the source.', 'DQC_8');
+          }
+          const ytd = ytdComparisons.get(period.id);
+          const ytdValue = ytd ? numericValue(row.values[ytd.id]) : NaN;
+          if (Number.isFinite(numeric) && Number.isFinite(ytdValue) && numeric > ytdValue) {
+            add('The discrete value exceeds the comparable YTD value. Verify both against the source.', 'DQC_18');
           }
           if (missing(row.magnitude)) add('Magnitude is missing for this value.', 'DQC_1');
           if (missing(row.unit)) add('Unit is missing for this value.', 'DQC_2');
